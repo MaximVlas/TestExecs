@@ -1,0 +1,289 @@
+// Predicate helper: ge(a, b) -> bool
+4x0005/m0b <- i64 <- i64 -> bool
+// Predicate helper: ne(a, b) -> bool
+4x0006/m0b <- i64 <- i64 -> bool
+
+// Linux syscall atomics used by this demo.
+6x0200 <- i64 <- ptr <- i64 -> i64
+6x0201 <- i64 <- ptr <- i64 -> i64
+6x0203 <- i64 <- ptr <- i64 <- i64 -> i64
+6x0204 <- i64 -> i64
+6x0206 <- ptr <- i64 <- i64 <- i64 <- i64 <- i64 -> ptr
+6x0207 <- ptr <- i64 -> i64
+6x0210 <- ptr -> i64
+6x0211 <- ptr -> ptr
+
+// print_text(msg: ptr) -> i64
+// Writes a null-terminated string to stdout.
+0n0100/m2kb/s1kb/r64b/a8 <- ptr -> i64
+::
+    | 4x0006/m0b << $0 << 0 >> ptr_ok
+    | ptr_ok ?
+    ::
+        | 6x0210 << $0 >> len
+        | 6x0200 << 1 << $0 << len >> written
+        <- written
+    ::
+    ::
+        <- 0
+    ::
+::
+
+// print_section(label: ptr, path: ptr, max_bytes: i64) -> i64
+// Prints one dashboard row with an extra blank line after it.
+0n0101/m32kb/s16kb/r64b/a8 <- ptr <- ptr <- i64 -> i64
+::
+    | 0n0100 << $0 >> label_written
+    | 6x0203 << -100 << $1 << 0 << 0 >> fd
+    | 4x0005/m0b << fd << 0 >> fd_ok
+    | fd_ok ?
+    ::
+        | 6x0206 << 0 << 8192 << 3 << 34 << -1 << 0 >> buf
+        | 6x0201 << fd << buf << $2 >> read_n
+        | 4x0005/m0b << read_n << 0 >> read_ok
+        | read_ok ?
+        ::
+            | 6x0200 << 1 << buf << read_n >> section_written
+        ::
+        ::
+            | 0n0100 << "<n/a>\n" >> read_error_written
+        ::
+        | 6x0207 << buf << 8192 >> unmap_result
+        | 6x0204 << fd >> close_result
+    ::
+    ::
+        | 0n0100 << "<n/a>\n" >> open_error_written
+    ::
+    | 0n0100 << "\n" >> gap_written
+    <- 0
+::
+
+// print_row(label: ptr, path: ptr, max_bytes: i64) -> i64
+// Same as print_section but without forcing an extra blank line.
+0n0102/m32kb/s16kb/r64b/a8 <- ptr <- ptr <- i64 -> i64
+::
+    | 0n0100 << $0 >> label_written
+    | 6x0203 << -100 << $1 << 0 << 0 >> fd
+    | 4x0005/m0b << fd << 0 >> fd_ok
+    | fd_ok ?
+    ::
+        | 6x0206 << 0 << 8192 << 3 << 34 << -1 << 0 >> buf
+        | 6x0201 << fd << buf << $2 >> read_n
+        | 4x0005/m0b << read_n << 0 >> read_ok
+        | read_ok ?
+        ::
+            | 6x0200 << 1 << buf << read_n >> row_written
+        ::
+        ::
+            | 0n0100 << "<n/a>\n" >> read_error_written
+        ::
+        | 6x0207 << buf << 8192 >> unmap_result
+        | 6x0204 << fd >> close_result
+    ::
+    ::
+        | 0n0100 << "<n/a>\n" >> open_error_written
+    ::
+    <- 0
+::
+
+// print_env_row(label: ptr, env_key: ptr) -> i64
+// Looks up an environment variable and prints it, otherwise prints <n/a>.
+0n0103/m8kb/s4kb/r64b/a8 <- ptr <- ptr -> i64
+::
+    | 0n0100 << $0 >> label_written
+    | 6x0211 << $1 >> env_value
+    | 4x0006/m0b << env_value << 0 >> has_env
+    | has_env ?
+    ::
+        | 0n0100 << env_value >> env_written
+        | 0n0100 << "\n" >> env_nl
+    ::
+    ::
+        | 0n0100 << "<n/a>\n" >> env_missing
+    ::
+    <- 0
+::
+
+// print_row_fallback3(label: ptr, path_a: ptr, path_b: ptr, path_c: ptr, max_bytes: i64) -> i64
+// Prints a row using the first readable file among three candidate paths.
+0n0104/m48kb/s24kb/r64b/a8 <- ptr <- ptr <- ptr <- ptr <- i64 -> i64
+::
+    | 0n0100 << $0 >> label_written
+
+    | 6x0203 << -100 << $1 << 0 << 0 >> fd_a
+    | 4x0005/m0b << fd_a << 0 >> ok_a
+    | ok_a ?
+    ::
+        | 6x0206 << 0 << 8192 << 3 << 34 << -1 << 0 >> buf_a
+        | 6x0201 << fd_a << buf_a << $4 >> read_a
+        | 4x0005/m0b << read_a << 0 >> read_ok_a
+        | read_ok_a ?
+        ::
+            | 6x0200 << 1 << buf_a << read_a >> write_a
+        ::
+        ::
+            | 0n0100 << "<n/a>\n" >> write_err_a
+        ::
+        | 6x0207 << buf_a << 8192 >> unmap_a
+        | 6x0204 << fd_a >> close_a
+    ::
+    ::
+        | 6x0203 << -100 << $2 << 0 << 0 >> fd_b
+        | 4x0005/m0b << fd_b << 0 >> ok_b
+        | ok_b ?
+        ::
+            | 6x0206 << 0 << 8192 << 3 << 34 << -1 << 0 >> buf_b
+            | 6x0201 << fd_b << buf_b << $4 >> read_b
+            | 4x0005/m0b << read_b << 0 >> read_ok_b
+            | read_ok_b ?
+            ::
+                | 6x0200 << 1 << buf_b << read_b >> write_b
+            ::
+            ::
+                | 0n0100 << "<n/a>\n" >> write_err_b
+            ::
+            | 6x0207 << buf_b << 8192 >> unmap_b
+            | 6x0204 << fd_b >> close_b
+        ::
+        ::
+            | 6x0203 << -100 << $3 << 0 << 0 >> fd_c
+            | 4x0005/m0b << fd_c << 0 >> ok_c
+            | ok_c ?
+            ::
+                | 6x0206 << 0 << 8192 << 3 << 34 << -1 << 0 >> buf_c
+                | 6x0201 << fd_c << buf_c << $4 >> read_c
+                | 4x0005/m0b << read_c << 0 >> read_ok_c
+                | read_ok_c ?
+                ::
+                    | 6x0200 << 1 << buf_c << read_c >> write_c
+                ::
+                ::
+                    | 0n0100 << "<n/a>\n" >> write_err_c
+                ::
+                | 6x0207 << buf_c << 8192 >> unmap_c
+                | 6x0204 << fd_c >> close_c
+            ::
+            ::
+                | 0n0100 << "<n/a>\n" >> missing_all
+            ::
+        ::
+    ::
+    <- 0
+::
+
+// print_gpu1_name_row(label: ptr, nvidia_info: ptr, fallback_a: ptr, fallback_b: ptr, fallback_c: ptr) -> i64
+// Reads NVIDIA model text without tab characters to avoid right-column overlap; falls back to uevent.
+0n0105/m64kb/s32kb/r64b/a8 <- ptr <- ptr <- ptr <- ptr <- ptr -> i64
+::
+    | 6x0203 << -100 << $1 << 0 << 0 >> fd_n
+    | 4x0005/m0b << fd_n << 0 >> has_nvidia_info
+    | has_nvidia_info ?
+    ::
+        | 0n0100 << $0 >> label_written
+        | 6x0206 << 0 << 8192 << 3 << 34 << -1 << 0 >> buf_n
+        | 6x0201 << fd_n << buf_n << 10 >> skip_prefix
+        | 6x0201 << fd_n << buf_n << 23 >> read_model
+        | 4x0005/m0b << read_model << 1 >> model_ok
+        | model_ok ?
+        ::
+            | 6x0200 << 1 << buf_n << read_model >> write_model
+            | 0n0100 << "\n" >> write_model_nl
+        ::
+        ::
+            | 0n0100 << "<n/a>\n" >> write_model_na
+        ::
+        | 6x0207 << buf_n << 8192 >> unmap_n
+        | 6x0204 << fd_n >> close_n
+    ::
+    ::
+        | 0n0104 << $0 << $2 << $3 << $4 << 14 >> fallback_name
+    ::
+    <- 0
+::
+
+// print_cpu_model_row(label: ptr, cpuinfo: ptr, fallback_a: ptr, fallback_b: ptr, fallback_c: ptr) -> i64
+// Reads the first CPU model value from /proc/cpuinfo using fixed offsets.
+0n0106/m64kb/s32kb/r64b/a8 <- ptr <- ptr <- ptr <- ptr <- ptr -> i64
+::
+    | 6x0203 << -100 << $1 << 0 << 0 >> fd_cpu
+    | 4x0005/m0b << fd_cpu << 0 >> has_cpuinfo
+    | has_cpuinfo ?
+    ::
+        | 0n0100 << $0 >> label_written
+        | 6x0206 << 0 << 8192 << 3 << 34 << -1 << 0 >> buf_cpu
+        | 6x0201 << fd_cpu << buf_cpu << 80 >> skip_to_model
+        | 6x0201 << fd_cpu << buf_cpu << 38 >> read_model
+        | 4x0005/m0b << read_model << 1 >> model_ok
+        | model_ok ?
+        ::
+            | 6x0200 << 1 << buf_cpu << read_model >> write_model
+            | 0n0100 << "\n" >> write_model_nl
+        ::
+        ::
+            | 0n0100 << "<n/a>\n" >> write_model_na
+        ::
+        | 6x0207 << buf_cpu << 8192 >> unmap_cpu
+        | 6x0204 << fd_cpu >> close_cpu
+    ::
+    ::
+        | 0n0104 << $0 << $2 << $3 << $4 << 24 >> fallback_cpu_model
+    ::
+    <- 0
+::
+
+// Executable entry point.
+0n0000/m96kb/s48kb/r64b/a8 -> i64
+::
+    | 0n0100 << "\x1b[1;36m+==================================================================+\x1b[0m\n" >> h0
+    | 0n0100 << "\x1b[1;36m|                            fplfetch                              |\x1b[0m\n" >> h1
+    | 0n0100 << "\x1b[1;36m+==================================================================+\x1b[0m\n\n" >> h3
+
+    // Left column: system.
+    | 0n0100 << "\x1b[1;33m[ system ]\x1b[0m\n" >> g0
+    | 0n0102 << "  \x1b[1;34mhost\x1b[0m          : " << "/proc/sys/kernel/hostname" << 40 >> s0
+    | 0n0102 << "  \x1b[1;34mos\x1b[0m            : " << "/proc/sys/kernel/ostype" << 24 >> s1
+    | 0n0102 << "  \x1b[1;34mkernel\x1b[0m        : " << "/proc/sys/kernel/osrelease" << 32 >> s2
+    | 0n0102 << "  \x1b[1;34muptime\x1b[0m        : " << "/proc/uptime" << 28 >> s3
+    | 0n0102 << "  \x1b[1;34mload\x1b[0m          : " << "/proc/loadavg" << 30 >> s4
+
+    // Right column: session (overlay beside system).
+    | 0n0100 << "\x1b[6A" >> up_sys
+    | 0n0100 << "\x1b[54C\x1b[1;33m[ session ]\x1b[0m\n" >> rs0
+    | 0n0103 << "\x1b[54C  \x1b[1;34mshell\x1b[0m         : " << "SHELL" >> rs1
+    | 0n0103 << "\x1b[54C  \x1b[1;34mterminal\x1b[0m      : " << "TERM" >> rs2
+    | 0n0103 << "\x1b[54C  \x1b[1;34mterm program\x1b[0m  : " << "TERM_PROGRAM" >> rs3
+    | 0n0103 << "\x1b[54C  \x1b[1;34muser\x1b[0m          : " << "USER" >> rs4
+    | 0n0103 << "\x1b[54C  \x1b[1;34mdesktop\x1b[0m       : " << "XDG_CURRENT_DESKTOP" >> rs5
+    | 0n0100 << "\n" >> rs_gap
+
+    // Left column: GPU (show second GPU when available).
+    | 0n0100 << "\x1b[1;33m[ gpu ]\x1b[0m\n" >> g3
+    | 0n0105 << "  \x1b[1;34mgpu1 name\x1b[0m     : " << "/proc/driver/nvidia/gpus/0000:01:00.0/information" << "/sys/class/drm/card1/device/uevent" << "/sys/class/drm/card0/device/uevent" << "/sys/class/drm/renderD128/device/uevent" >> gpu0
+    | 0n0104 << "  \x1b[1;34mgpu1 device\x1b[0m   : " << "/sys/class/drm/card1/device/device" << "/sys/class/drm/card0/device/device" << "/sys/class/drm/renderD128/device/device" << 7 >> gpu1
+    | 0n0104 << "  \x1b[1;34mgpu2 name\x1b[0m     : " << "/sys/class/drm/card2/device/uevent" << "/sys/class/drm/renderD129/device/uevent" << "/sys/class/drm/card3/device/uevent" << 14 >> gpu2
+    | 0n0104 << "  \x1b[1;34mgpu2 device\x1b[0m   : " << "/sys/class/drm/card2/device/device" << "/sys/class/drm/renderD129/device/device" << "/sys/class/drm/card3/device/device" << 7 >> gpu3
+    | 0n0104 << "  \x1b[1;34mgpu class\x1b[0m     : " << "/sys/class/drm/card1/device/class" << "/sys/class/drm/card2/device/class" << "/sys/class/drm/card0/device/class" << 9 >> gpu4
+
+    // Right column: runtime (overlay beside gpu).
+    | 0n0100 << "\x1b[6A" >> up_gpu
+    | 0n0100 << "\x1b[54C\x1b[1;33m[ runtime ]\x1b[0m\n" >> rr0
+    | 0n0103 << "\x1b[54C  \x1b[1;34msession type\x1b[0m  : " << "XDG_SESSION_TYPE" >> rr1
+    | 0n0103 << "\x1b[54C  \x1b[1;34mdisplay\x1b[0m       : " << "DISPLAY" >> rr2
+    | 0n0103 << "\x1b[54C  \x1b[1;34mruntime dir\x1b[0m   : " << "XDG_RUNTIME_DIR" >> rr3
+    | 0n0103 << "\x1b[54C  \x1b[1;34mlanguage\x1b[0m      : " << "LANG" >> rr4
+    | 0n0102 << "\x1b[54C  \x1b[1;34mpid max\x1b[0m       : " << "/proc/sys/kernel/pid_max" << 18 >> rr5
+    | 0n0100 << "\n" >> rr_gap
+
+    // Compact tail block.
+    | 0n0100 << "\x1b[1;33m[ hardware ]\x1b[0m\n" >> g2
+    | 0n0104 << "  \x1b[1;34mmachine\x1b[0m       : " << "/sys/devices/virtual/dmi/id/product_family" << "/sys/devices/virtual/dmi/id/product_name" << "/proc/sys/kernel/hostname" << 48 >> hw0
+    | 0n0104 << "  \x1b[1;34mvendor\x1b[0m        : " << "/sys/devices/virtual/dmi/id/sys_vendor" << "/sys/devices/virtual/dmi/id/board_vendor" << "/proc/sys/kernel/ostype" << 24 >> hw1
+    | 0n0106 << "  \x1b[1;34mcpu model\x1b[0m     : " << "/proc/cpuinfo" << "/sys/devices/system/cpu/online" << "/sys/devices/system/cpu/possible" << "/proc/sys/kernel/ostype" >> hw2
+    | 0n0104 << "  \x1b[1;34mcpu cores\x1b[0m     : " << "/sys/devices/system/cpu/online" << "/sys/devices/system/cpu/possible" << "/sys/devices/system/cpu/present" << 16 >> hw3
+    | 0n0104 << "  \x1b[1;34mcpu smt\x1b[0m       : " << "/sys/devices/system/cpu/smt/control" << "/sys/devices/system/cpu/smt/active" << "/proc/sys/kernel/ostype" << 4 >> hw4
+    | 0n0102 << "  \x1b[1;34mmem total\x1b[0m     : " << "/proc/meminfo" << 28 >> hw5
+
+    | 0n0100 << "\x1b[1;32m+==================================================================+\x1b[0m\n" >> f0
+    | 0n0100 << "\x1b[0;36mTip:\x1b[0m watch -n 1 ./examples/fplfetch\n" >> tip
+    <- 0
+::
